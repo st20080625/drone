@@ -1,113 +1,103 @@
 import pygame
 import module_3d as m3
 from smbus2 import SMBus
+import math
 import time
-from threading import Thread, Lock
 
 pygame.init()
+
+# Pygame ウィンドウ設定
 width = m3.width
 height = m3.height
 screen = pygame.display.set_mode((width, height))
 red = [255, 0, 0]
 blue = [0, 0, 255]
 green = [0, 255, 0]
+
+# 3D軸定義
 axis_x = m3.vec3D(1, 0, 0)
 axis_y = m3.vec3D(0, 1, 0)
 axis_z = m3.vec3D(0, 0, 1)
-angle_x = -2
-angle_y = 10
-angle_z = 0
 
+# I2C設定
+bus_num = 1
+smbus2 = SMBus(bus_num)
+
+# ジャイロスコープ設定
 gyro_addr = 0x69
 CTRL_REG1 = 0x20
 CTRL_REG2 = 0x21
 CTRL_REG4 = 0x23
 start_data_addr = 0x28
-bus_num = 1
-LSB = 0.0152
-sensitivity = 0.0175
-smbus2 = SMBus(bus_num)
-
-smbus2.write_byte_data(gyro_addr, CTRL_REG1, 0x8F)  # Wakeup and set mode
+LSB_gyro = 0.0152  # ジャイロスコープスケールファクター（°/sec per LSB）
+smbus2.write_byte_data(gyro_addr, CTRL_REG1, 0x8F)  # ジャイロ有効化
 smbus2.write_byte_data(gyro_addr, CTRL_REG2, 0x00)
 smbus2.write_byte_data(gyro_addr, CTRL_REG4, 0x10)
 
-accumulated_angle_x = 0.0
-accumulated_angle_y = 0.0
-accumulated_angle_z = 0.0
+# 加速度センサー設定
+accel_addr = 0x19
+accel_data_start = 0x28
+CTRL_REG1_A = 0x20
+CTRL_REG4_A = 0x23
+LSB_accel = 0.000244  # 加速度センサーのスケールファクター (g per LSB)
+smbus2.write_byte_data(accel_addr, CTRL_REG1_A, 0x57)
+smbus2.write_byte_data(accel_addr, CTRL_REG4_A, 0x20)
 
-delta_t = 0.1
-angle_lock = Lock()  # スレッド間で角度を安全に更新するためのロック
+# 角度初期化
+angle_x, angle_y, angle_z = 0.0, 0.0, 0.0
+delta_t = 0.1  # サンプリング時間
 
-def gyro():
-    global accumulated_angle_x
-    global accumulated_angle_y
-    global accumulated_angle_z
-    global delta_t
-    global angle_x
-    global angle_y
-    global angle_z
-    while True:
-        data = smbus2.read_i2c_block_data(gyro_addr, start_data_addr | 0x80, 6)
+# コンプリメンタリフィルタ係数
+alpha = 0.98  # ジャイロの信頼性
 
-        x = (data[0] | (data[1] << 8))
-        y = (data[2] | (data[3] << 8))
-        z = (data[4] | (data[5] << 8))
+# メインループ
+running = True
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
 
-        if x >= 32768:
-            x -= 65536
-        if y >= 32768:
-            y -= 65536
-        if z >= 32768:
-            z -= 65536
+    # ジャイロスコープデータ取得
+    data = smbus2.read_i2c_block_data(gyro_addr, start_data_addr | 0x80, 6)
+    gx = (data[0] | (data[1] << 8)) - (0 if data[1] < 128 else 65536)
+    gy = (data[2] | (data[3] << 8)) - (0 if data[3] < 128 else 65536)
+    gz = (data[4] | (data[5] << 8)) - (0 if data[5] < 128 else 65536)
 
-        x = x * LSB
-        y = y * LSB
-        z = z * LSB
+    # 加速度センサーデータ取得
+    data = smbus2.read_i2c_block_data(accel_addr, accel_data_start | 0x80, 6)
+    ax = (data[1] << 8) | data[0]
+    ay = (data[3] << 8) | data[2]
+    az = (data[5] << 8) | data[4]
+    if ax > 32767: ax -= 65536
+    if ay > 32767: ay -= 65536
+    if az > 32767: az -= 65536
 
-        delta_angle_x = x * delta_t
-        delta_angle_y = y * delta_t
-        delta_angle_z = z * delta_t
+    # ジャイロスコープ角速度変換
+    gx *= LSB_gyro
+    gy *= LSB_gyro
+    gz *= LSB_gyro
 
-        accumulated_angle_x += delta_angle_x
-        accumulated_angle_y += delta_angle_y
-        accumulated_angle_z += delta_angle_z
+    # 加速度センサー重力成分から角度計算
+    acc_angle_x = math.atan2(ay, az) * 180 / math.pi
+    acc_angle_y = math.atan2(ax, az) * 180 / math.pi
 
-        with angle_lock:
-            angle_x = accumulated_angle_x
-            angle_y = accumulated_angle_y
-            angle_z = accumulated_angle_z
+    # コンプリメンタリフィルタ
+    angle_x = alpha * (angle_x + gx * delta_t) + (1 - alpha) * acc_angle_x
+    angle_y = alpha * (angle_y + gy * delta_t) + (1 - alpha) * acc_angle_y
+    angle_z += gz * delta_t  # ジャイロの角速度のみ使用
 
-        print(f"累積角度: X={accumulated_angle_x:.2f}°, Y={accumulated_angle_y:.2f}°, Z={accumulated_angle_z:.2f}°")
+    # 描画
+    screen.fill("gray")
+    rotated_x = axis_x.rotate('x', angle_x).rotate('y', angle_y).rotate('z', angle_z)
+    rotated_y = axis_y.rotate('x', angle_x).rotate('y', angle_y).rotate('z', angle_z)
+    rotated_z = axis_z.rotate('x', angle_x).rotate('y', angle_y).rotate('z', angle_z)
 
-        time.sleep(delta_t)
+    rotated_x.draw_line(red)
+    rotated_y.draw_line(blue)
+    rotated_z.draw_line(green)
 
-def draw():
-    global angle_x
-    global angle_y
-    global angle_z
-    running = True
-    clock = pygame.time.Clock()
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-        current_angle_x = angle_x
-        current_angle_y = angle_y
-        current_angle_z = angle_z
+    pygame.display.flip()
+    print(f"Angle X: {angle_x:.2f}, Y: {angle_y:.2f}, Z: {angle_z:.2f}")
+    time.sleep(delta_t)
 
-        screen.fill("gray")
-        axis_x.rotate('x', current_angle_x).rotate('y', current_angle_y).rotate('z', current_angle_z).draw_line(red)
-        axis_y.rotate('x', current_angle_x).rotate('y', current_angle_y).rotate('z', current_angle_z).draw_line(blue)
-        axis_z.rotate('x', current_angle_x).rotate('y', current_angle_y).rotate('z', current_angle_z).draw_line(green)
-        pygame.display.flip()
-        clock.tick(60)  # fps
-
-    pygame.quit()
-
-gyro_thread = Thread(target=gyro)
-draw_thread = Thread(target=draw)
-gyro_thread.start()
-draw_thread.start()
-gyro_thread.join()
-draw_thread.join()
+pygame.quit()
