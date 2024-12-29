@@ -6,8 +6,7 @@ CTRL_REG2 = 0x21
 CTRL_REG4 = 0x23
 start_data_addr = 0x28
 bus_num = 1
-LSB = 0.0152
-sensitivity = 0.0175
+LSB = 0.0175
 smbus2 = SMBus(bus_num)
 
 smbus2.write_byte_data(gyro_addr, CTRL_REG1, 0x8F)  # Wakeup and set mode

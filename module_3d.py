@@ -38,6 +38,11 @@ class vec3D:
             )
     def scale_factor(self):
         return 500/(self.z + 500)
-    def draw_line(self,color):
+    def draw_line(self,v,color):
         scale_factor = self.scale_factor()
-        pygame.draw.line(screen, color, (width/2, height/2),((self.x*150+width/2)/scale_factor,-self.y*150+height/2), width=2)
+        v_scale_factor = v.scale_factor()
+        pygame.draw.line(screen, color,((v.x*150+width/2)/v_scale_factor,-v.y*150+height/2) ,((self.x*150+width/2)/scale_factor,-self.y*150+height/2), width=2)
+def collect_triangle(v1, v2, v3, color):
+    vertices = [v1, v2, v3]
+    z = (v1.z + v2.z + v3.z) / 3
+    return (vertices, color, z)

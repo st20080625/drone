@@ -4,36 +4,38 @@ import time
 
 bus_num = 1
 compass_addr = 0x1E
-compass_start_data = 0x03
-MR_REG_M = 0x02
-CRB_REG_M = 0x01
-
-'''
-+-4 gauss
-16bit
-4/32768 = 1LSB = 0.0001220703125
-LSB/gauss = 450 (x,y)
-gauss = LSB/(LSB/gauss)
-'''
+REG_CONFIG_A = 0x00
+REG_MODE = 0x02
+MAGNET_XOUT = 0x03
+MAGNET_YOUT = 0x07
+MAGNET_ZOUT = 0x05
 LSB = 0.000122
-LSB_GAUSS_XY = 450 
+LSB_GAUSS_XY = 450
 
-smbus2 = SMBus(bus_num)
-smbus2.write_byte_data(compass_addr, MR_REG_M, 0x00) # Wake up
-smbus2.write_byte_data(compass_addr, CRB_REG_M, 0x80)
+bus = SMBus(bus_num)
+bus.write_byte_data(compass_addr, REG_CONFIG_A, 0xE0)
+bus.write_byte_data(compass_addr, REG_MODE, 0x00)
+
+def read_word_sensor(addr):
+    high = bus.read_byte_data(compass_addr, addr)
+    low = bus.read_byte_data(compass_addr, addr + 1)
+    value = (high << 8) | low
+    if value >= 32768:
+        value -= 65536
+    return value
+
 while True:
-    data = smbus2.read_i2c_block_data(compass_addr, compass_start_data | 0x80, 6)
-
-    x = (data[0] | (data[1] << 8))
-    y = (data[2] | (data[3] << 8))
-    if x >= 32768: x -= 65536
-    if y >= 32768: y -= 65536
+    x = read_word_sensor(MAGNET_XOUT)
+    y = read_word_sensor(MAGNET_YOUT)
+    z = read_word_sensor(MAGNET_ZOUT)
 
     x_gauss = (x * LSB) / LSB_GAUSS_XY
     y_gauss = (y * LSB) / LSB_GAUSS_XY
 
-    angle = math.atan2(y_gauss,x_gauss) * (180/math.pi)
+    angle = math.atan2(y_gauss, x_gauss) * (180 / math.pi)
     if angle < 0:
         angle += 360
-    print(angle)
+
+    print(f"X={x:6d}, Y={y:6d}, Z={z:6d}, Angle={angle:.2f}")
+
     time.sleep(0.1)

@@ -10,6 +10,7 @@ esc = PWMOutputDevice(pin=pin,frequency=500)
 esc2 = PWMOutputDevice(pin=pin2,frequency=500)
 esc3 = PWMOutputDevice(pin=pin3,frequency=500)
 esc4 = PWMOutputDevice(pin=pin4,frequency=500)
+#valueは0.99から0.55ぐらいの値で回転するから1~100に0.55~0.99をmapすれば使える
 def init_esc(esc):
     esc.value = 0.9
     print(esc.value)
@@ -20,10 +21,13 @@ def init_esc(esc):
     esc.value = 0.1
     print(esc.value)
     sleep(10)
-    esc.value = 0.9
+    esc.value = 0.99
     print(esc.value)
     sleep(5)
     esc.value = 0.7 
+    print(esc.value)
+    sleep(5)
+    esc.value = 0.55
     print(esc.value)
     sleep(5)
     esc.value = 0
