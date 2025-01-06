@@ -18,3 +18,7 @@ while running:
 cam.terminate()
 controller.terminate()
 render_3d.terminate()
+
+cam.terminate()
+controller.terminate()
+render_3d.terminate()
