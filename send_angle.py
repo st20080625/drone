@@ -109,7 +109,7 @@ while True:
     sock.sendto(send_data.encode(),(ip_addr, port))
     motor_sock.sendto(send_data.encode(),(motor_ipaddr, motor_port))
 
-    print(f"Angle X: {angle_x:.2f}, Y: {angle_y:.2f}, Z: {angle_z:.2f}")
+    #print(f"Angle X: {angle_x:.2f}, Y: {angle_y:.2f}, Z: {angle_z:.2f}")
 
     current_time = new_time
 

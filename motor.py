@@ -112,7 +112,7 @@ def run(esc):
             if esc_value_map < 100:
                 esc_value_map += 5
                 esc.value = map_value(esc_value_map, 0, 100, 0.65, 0.99)
-
+        print(f'esc:{esc.value},esc1:{esc1.value},esc2:{esc2.value},esc3:{esc3.value}')
         sleep(0.1)
 def receive_controller():
     global w, s, a, d, space, shift, e, q, sock
