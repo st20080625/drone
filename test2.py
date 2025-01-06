@@ -4,7 +4,7 @@ from smbus2 import SMBus
 import math
 import time
 
-ip_addr = '192.168.1.18'
+ip_addr = '192.168.1.41'
 port = 5000
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -108,7 +108,7 @@ while True:
     angle_z += gz * delta_t_r
 
     send_data = json.dumps({'angle_x': angle_x, 'angle_y': angle_y, 'angle_z': angle_z})
-    sock.send(send_data.encode())
+    sock.sendto((ip_addr, port),send_data.encode())
 
     print(f"Angle X: {angle_x:.2f}, Y: {angle_y:.2f}, Z: {angle_z:.2f}")
 

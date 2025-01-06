@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.bind(('192.168.1.26', 5000))
+sock.bind(('192.168.1.41', 5000))
 sock.listen(1)
 conn, addr = sock.accept()
 print(f"接続を受け付けました: {addr}")

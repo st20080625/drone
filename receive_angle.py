@@ -1,8 +1,8 @@
 import socket, json
 import module_3d as m3
 import pygame
-ip_addr = '192.168.1.18'
-port = 5000
+ip_addr = '192.168.1.41'
+port = 5001
 sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 sock.bind((ip_addr,port))
 

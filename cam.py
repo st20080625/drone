@@ -3,7 +3,7 @@ import socket
 import cv2
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.connect(('192.168.1.26', 5000))
+sock.connect(('192.168.1.41', 5000))
 
 picam2 = Picamera2()
 config = picam2.create_preview_configuration(main={"format": "RGB888","size": (640, 480)})
