@@ -190,9 +190,12 @@ while True:
 
     angle_x = alpha * (angle_x + gx * delta_t_r) + (1 - alpha) * acc_angle_x
     angle_y = alpha * (angle_y + gy * delta_t_r) + (1 - alpha) * acc_angle_y
-    angle_z = np.arctan2(cy_gauss, cx_gauss)*180/np.pi - offset_angle_z
+    angle_z = np.arctan2(cy_gauss, cx_gauss)*180/np.pi
     if angle_z < 0:
         angle_z += 360
+    angle_z -= offset_angle_z
+    if angle_z < 0:
+        angle_z += 360+abs(offset_angle_z)
 
     send_data = json.dumps({'angle_x': angle_x, 'angle_y': angle_y, 'angle_z': angle_z})
     sock.sendto(send_data.encode(),(ip_addr, port))
