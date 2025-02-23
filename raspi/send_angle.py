@@ -129,7 +129,7 @@ def offset_angle_z(offset_cx, offset_cy):
     cx_gauss -= offset_cx
     cy_gauss -= offset_cy
 
-    offset_angle_z = np.arctan2(cy_gauss, cx_gauss)*180/np.py
+    offset_angle_z = np.arctan2(cy_gauss, cx_gauss)*180/np.pi
     return offset_angle_z
 angle_x, angle_y, angle_z = 0.0, 0.0, 0.0
 current_time = time.time()
@@ -190,7 +190,7 @@ while True:
 
     angle_x = alpha * (angle_x + gx * delta_t_r) + (1 - alpha) * acc_angle_x
     angle_y = alpha * (angle_y + gy * delta_t_r) + (1 - alpha) * acc_angle_y
-    angle_z = np.arctan2(cy_gauss, cx_gauss)*180/np.pi-offset_angle_z
+    angle_z = np.arctan2(cy_gauss, cx_gauss)*180/np.pi - offset_angle_z
     if angle_z < 0:
         angle_z += 360
 
