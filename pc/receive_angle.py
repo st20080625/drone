@@ -1,7 +1,7 @@
 import socket, json
 import module_3d as m3
 import pygame
-ip_addr = '192.168.1.41'
+ip_addr = '192.168.1.23'
 port = 5001
 sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 sock.bind((ip_addr,port))
@@ -37,6 +37,7 @@ while running:
         angle_x = decoded_data['angle_x']
         angle_y = decoded_data['angle_y']
         angle_z = decoded_data['angle_z']
+        angle_y = 0
     except socket.timeout:
         pass
     screen.fill("gray")
