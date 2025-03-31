@@ -106,10 +106,10 @@ void controll_motor_task(void *pvParameters)
       if (jsonDoc.containsKey("M1") && jsonDoc.containsKey("M2") &&
           jsonDoc.containsKey("M3") && jsonDoc.containsKey("M4"))
       {
-        float M1 = jsonDoc["M1"];
-        float M2 = jsonDoc["M2"];
-        float M3 = jsonDoc["M3"];
-        float M4 = jsonDoc["M4"];
+        int M1 = jsonDoc["M1"];
+        int M2 = jsonDoc["M2"];
+        int M3 = jsonDoc["M3"];
+        int M4 = jsonDoc["M4"];
 
         Serial.print("M1: ");
         Serial.println(M1);
@@ -119,10 +119,20 @@ void controll_motor_task(void *pvParameters)
         Serial.println(M3);
         Serial.print("M4: ");
         Serial.println(M4);
+
+        motor1.set_freq(M1);
+        motor2.set_freq(M2);
+        motor3.set_freq(M3);
+        motor4.set_freq(M4);
       }
+
       else
       {
         Serial.println("JSON does not contain required keys (M1, M2, M3, M4).");
+        motor1.set_freq(0);
+        motor2.set_freq(0);
+        motor3.set_freq(0);
+        motor4.set_freq(0);
       }
     }
 
@@ -156,10 +166,10 @@ void setup()
   Serial.println("Rotation Vector Report Enabled!");
 
   //motor_freq max 67 , min 33
-  motor1.init();
-  //motor2.init();
-  //motor3.init();
-  //motor4.init();
+  motor1.init(0);
+  motor2.init(0);
+  motor3.init(0);
+  motor4.init(1);
 
   // WiFi接続（リトライ制限なし）
   WiFi.mode(WIFI_STA);
@@ -179,9 +189,8 @@ void setup()
   Serial.print("Listening on UDP port ");
   Serial.println(recv_port1);
 
-  //xTaskCreate(send_sensor_task, "send_sensor", 2048, NULL, 2, NULL);
-  //xTaskCreate(controll_motor_task, "controll_motor", 2048, NULL, 1, NULL);
+  xTaskCreate(send_sensor_task, "send_sensor", 2048, NULL, 1, NULL);
+  xTaskCreate(controll_motor_task, "controll_motor", 2048, NULL, 1, NULL);
 }
 void loop(){
-  motor1.set_freq(45);
 }

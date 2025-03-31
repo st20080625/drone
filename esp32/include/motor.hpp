@@ -10,7 +10,7 @@ private:
     int ch;
 public:
     motor(int pwm_pin, int ch);
-    void init();
+    void init(int value);
     void set_freq(int value);
 };
 #endif

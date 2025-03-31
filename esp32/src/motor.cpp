@@ -3,15 +3,18 @@
 
 motor::motor(int pwm_pin, int ch) : pwm_pin(pwm_pin), ch(ch){}
 
-void motor::init(){
+void motor::init(int value = 0){
     ledcSetup(ch, 1000, 8);
     ledcAttachPin(pwm_pin, ch);
     ledcWrite(ch, 255);
     Serial.print("init_motor ch:");
     Serial.println(ch);
-    delay(5000);
+    delay(3000);
     ledcWrite(ch, 1);
     delay(500);
+    if (value == 1){
+        delay(2500);
+    }
     Serial.print("end_init_motor ch:");
     Serial.println(ch);
 }
