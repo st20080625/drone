@@ -9,6 +9,10 @@ port = 5001
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((ip, port))
 
+esp_ip = '192.168.1.19'
+port_esp = 5002
+sock_esp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
 class vec3D:
     def __init__(self, x, y, z, color=None):
         self.base_x = x
@@ -114,6 +118,122 @@ def rotate_euler(roll, pitch, yaw):
         [-np.sin(pitch), np.sin(roll)*np.cos(pitch), np.cos(roll)*np.cos(pitch)]
     ])
     return rotate_matrix
+
+def pid(current, target, axis_angle, rotation_direction, motors, previous_error, integral):
+    kp = 1
+    ki = 0.001
+    kd = 1
+    dt = 0.01
+    error = target - current
+    
+    p_output = kp * error
+    i_output = ki * integral
+    d_output = kd * (error - previous_error) / dt
+    
+    m1,m2,m3,m4 = motors[0], motors[1], motors[2], motors[3]
+    
+    pid_output = p_output + i_output + d_output
+    if axis_angle == "roll":
+        if error > 0:
+            m3 -= pid_output
+            m4 -= pid_output
+        else:
+            m1 -= pid_output
+            m2 -= pid_output
+    elif axis_angle == "pitch":
+        if error > 0:
+            m1 -= pid_output
+            m4 -= pid_output
+        else:
+            m2 -= pid_output
+            m3 -= pid_output
+    elif axis_angle == "yaw":
+        if rotation_direction == "right":
+            m1 -= pid_output
+            m3 -= pid_output
+        if rotation_direction == "left":
+            m2 -= pid_output
+            m4 -= pid_output
+            
+    previous_error = error
+    
+    return m1, m2, m3, m4
+
+def pid_all_axes(current_angles, target_angles, motor_speed, previous_errors, integrals, dt=0.01, kp=1, ki=0.001, kd=1):
+    """
+    PID制御をロール、ピッチ、ヨーの順に処理し、モーター出力を更新する。
+    
+    Parameters:
+        current_angles: dict - 現在の角度 {'roll': roll, 'pitch': pitch, 'yaw': yaw}
+        target_angles: dict - 目標の角度 {'roll': target_roll, 'pitch': target_pitch, 'yaw': target_yaw}
+        motor_speed: int - 基準となるモーター速度
+        previous_errors: dict - 前回のエラー {'roll': prev_roll, 'pitch': prev_pitch, 'yaw': prev_yaw}
+        integrals: dict - 積分値 {'roll': integral_roll, 'pitch': integral_pitch, 'yaw': integral_yaw}
+        dt: float - 時間間隔
+        kp, ki, kd: float - PIDゲイン
+    
+    Returns:
+        m1, m2, m3, m4: モーターの出力
+        updated_errors: dict - 更新されたエラー
+        updated_integrals: dict - 更新された積分値
+    """
+    # モーター出力を初期化
+    m1, m2, m3, m4 = motor_speed, motor_speed, motor_speed, motor_speed
+    updated_errors = {}
+    updated_integrals = {}
+
+    # 各軸ごとにPID制御を計算
+    for axis in ['roll', 'pitch', 'yaw']:
+        # エラーを計算
+        error = target_angles[axis] - current_angles[axis]
+
+        # P制御
+        p_output = kp * error
+
+        # I制御
+        integrals[axis] += error * dt
+        i_output = ki * integrals[axis]
+
+        # D制御
+        d_output = kd * (error - previous_errors[axis]) / dt
+
+        # PID出力
+        pid_output = p_output + i_output + d_output
+
+        # モーターの出力を調整
+        if axis == "roll":
+            if error > 0:
+                m3 -= pid_output
+                m4 -= pid_output
+            else:
+                m1 -= pid_output
+                m2 -= pid_output
+        elif axis == "pitch":
+            if error > 0:
+                m1 -= pid_output
+                m4 -= pid_output
+            else:
+                m2 -= pid_output
+                m3 -= pid_output
+        elif axis == "yaw":
+            if error > 0:
+                m1 += pid_output
+                m3 -= pid_output
+            else:
+                m2 += pid_output
+                m4 -= pid_output
+
+        # エラーと積分値を更新
+        updated_errors[axis] = error
+        updated_integrals[axis] = integrals[axis]
+
+    # モーター出力を制限（例: 32～65の範囲）
+    m1 = max(32, min(65, m1))
+    m2 = max(32, min(65, m2))
+    m3 = max(32, min(65, m3))
+    m4 = max(32, min(65, m4))
+
+    return m1, m2, m3, m4, updated_errors, updated_integrals
 
 def sort_small_y(vec_list):
     vec_list.sort(key=lambda x: x.y, reverse=True)
@@ -223,12 +343,14 @@ for vec in vectors_down:
 running = True
 clock = pygame.time.Clock()
 
-#モーターの回転数M1, M2, M3, M4 = motor_speed + PID_out_M1, M2, M3, M4
-motor_speed = 0
+# 初期化
+motor_speed = 35  # 基準速度
 target_roll, target_pitch, target_yaw = 0, 0, 0
-#M1~M4 min32 max65
-M1, M2, M3, M4 = 0, 0, 0, 0
-error_roll, error_pich, error_yaw = 0, 0, 0
+M1, M2, M3, M4 = motor_speed, motor_speed, motor_speed, motor_speed
+previous_errors = {'roll': 0, 'pitch': 0, 'yaw': 0}
+integrals = {'roll': 0, 'pitch': 0, 'yaw': 0}
+dt = 0.01  # 時間間隔
+stop = 0
 while running:
     # イベント処理
     for event in pygame.event.get():
@@ -246,78 +368,100 @@ while running:
             # l
             joystick.get_button(4),
             # r
-            joystick.get_button(5)
+            joystick.get_button(5),
+            # reset
+            joystick.get_button(1),
         ]
         # スティックのデッドゾーン処理
-        #stick R
         if -0.15 < gamepad_data[0] < 0.15:
             gamepad_data[0] = 0
         if -0.15 < gamepad_data[1] < 0.15:
             gamepad_data[1] = 0
         if -0.15 < gamepad_data[2] < 0.15:
             gamepad_data[2] = 0
-        
-        target_roll = gamepad_data[2] * 30 * np.pi/180
-        target_pitch = gamepad_data[1] * 30 * np.pi/180
-            
-        if gamepad_data[3] == 1 and motor_speed > 1:
+        reset = gamepad_data[5]
+        # 目標角度を更新
+        target_roll = gamepad_data[2] * 30 * np.pi / 180
+        target_pitch = gamepad_data[1] * 30 * np.pi / 180
+
+        # モーター速度を調整
+        if gamepad_data[3] == 1 and motor_speed > 33:
             motor_speed -= 1
-        if gamepad_data[4] == 1 and motor_speed < 99:
+        if gamepad_data[4] == 1 and motor_speed < 67:
             motor_speed += 1
+
     # ドローンからクォータニオンを受信
     try:
         data, addr = sock.recvfrom(1024)
         data = json.loads(data.decode())
         r, i, j, k = data['r'], data['i'], data['j'], data['k']
-    except socket.timeout: 
+    except socket.timeout:
         continue
+
     # クォータニオンをオイラー角に変換
     roll, pitch, yaw = quaternion2euler(r, i, j, k)
-    target_yaw = yaw + gamepad_data[0] * 10 * np.pi/180
+    target_yaw = yaw + gamepad_data[0] * 10 * np.pi / 180
+
+    # 現在の角度と目標角度を辞書に格納
+    current_angles = {'roll': roll, 'pitch': pitch, 'yaw': yaw}
+    target_angles = {'roll': target_roll, 'pitch': target_pitch, 'yaw': target_yaw}
+
+    # PID制御を適用
+    M1, M2, M3, M4, previous_errors, integrals = pid_all_axes(
+        current_angles, target_angles, motor_speed, previous_errors, integrals, dt
+    )
+
+    #モーター出力を送信（例: ESP32に送信）
+    motor_outputs = {'M1': M1, 'M2': M2, 'M3': M3, 'M4': M4}
     
+    if stop:
+        motor_outputs = {'M1': 0, 'M2': 0, 'M3': 0, 'M4': 0}
+    print(motor_outputs)
+    sock_esp.sendto(json.dumps(motor_outputs).encode(), (esp_ip, port_esp))
+
+    # 描画処理（省略せずにそのまま使用）
     rotate_matrix = rotate_euler(target_roll, target_pitch, target_yaw)
-    
     screen.fill(gray)
-    # rotate_coordinates をオイラー角で回転
+
     for pos in line_pos_list_up:
         pos.reset()
         pos.rotate_euler(rotate_matrix)
-    
+
     for pos in line_pos_list_down:
         pos.reset()
         pos.rotate_euler(rotate_matrix)
-    
+
     for vec in vectors_up:
         vec.reset()
         vec.rotate_euler(rotate_matrix)
-    
+
     for vec in vectors_down:
         vec.reset()
         vec.rotate_euler(rotate_matrix)
 
-    axis_x.reset()    
-    axis_y.reset()    
+    axis_x.reset()
+    axis_y.reset()
     axis_z.reset()
-    
+
     axis_x.rotate_euler(rotate_matrix)
     axis_y.rotate_euler(rotate_matrix)
     axis_z.rotate_euler(rotate_matrix)
-    
+
 
     # 描画処理
     vectors_up = sort_small_y(vectors_up)
     vectors_down = sort_small_y(vectors_down)
-    
+
     line_pos_list_up[0].draw_line(white, line_pos_list_up[1])
     line_pos_list_up[2].draw_line(white, line_pos_list_up[3])
     line_pos_list_up[4].draw_line(white, line_pos_list_up[5])
     line_pos_list_up[6].draw_line(white, line_pos_list_up[7])
-    
+
     line_pos_list_down[0].draw_line(white, line_pos_list_down[1])
     line_pos_list_down[2].draw_line(white, line_pos_list_down[3])
     line_pos_list_down[4].draw_line(white, line_pos_list_down[5])
     line_pos_list_down[6].draw_line(white, line_pos_list_down[7])
-    
+
     circle_vectors = []
     circle_vectors.extend(vectors_up)
     circle_vectors.extend(vectors_down)
@@ -325,15 +469,14 @@ while running:
     for vec in circle_vectors:
         pygame.draw.circle(screen, vec.color, (int(vec.x * 150 + width / 2), int(-vec.z * 150 + height / 2)), 3)
 
-    # ポールの描画
     for vec in vectors_up:
         vec.draw_line(vec.color, vectors_down[vectors_up.index(vec)])
-    
+
     axis_x.draw_line(red, None)
     axis_y.draw_line(green, None)
     axis_z.draw_line(blue, None)
-    
-    # 軸の説明を描画
+
+# 軸の説明を描画
     pygame.draw.line(screen, red, (1000,500), (1200,500), width=5)
     pygame.draw.line(screen, green, (1000,500), (940,440), width=5)
     pygame.draw.line(screen, blue, (1000,500), (1000,300), width=5)
@@ -359,5 +502,5 @@ while running:
     # 画面更新
     pygame.display.flip()
     clock.tick(240)
-    
+
 pygame.quit()
