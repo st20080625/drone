@@ -3,13 +3,14 @@ import pygame
 import socket
 import json
 import copy
+import math
 
 ip = '192.168.1.23'
 port = 5001
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((ip, port))
 
-esp_ip = '192.168.1.19'
+esp_ip = '192.168.1.38'
 port_esp = 5002
 sock_esp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
@@ -159,7 +160,7 @@ def pid(current, target, axis_angle, rotation_direction, motors, previous_error,
     
     return m1, m2, m3, m4
 
-def pid_all_axes(current_angles, target_angles, motor_speed, previous_errors, integrals, dt=0.01, kp=1, ki=0.001, kd=1):
+def pid_all_axes(current_angles, target_angles, motor_speed, previous_errors, integrals, dt=0.01, kp=2, ki=0.01, kd=1):
     """
     PID制御をロール、ピッチ、ヨーの順に処理し、モーター出力を更新する。
     
@@ -227,11 +228,11 @@ def pid_all_axes(current_angles, target_angles, motor_speed, previous_errors, in
         updated_errors[axis] = error
         updated_integrals[axis] = integrals[axis]
 
-    # モーター出力を制限（例: 32～65の範囲）
-    m1 = max(32, min(65, m1))
-    m2 = max(32, min(65, m2))
-    m3 = max(32, min(65, m3))
-    m4 = max(32, min(65, m4))
+    # モーター出力を制限（例: 33～67の範囲）
+    m1 = max(33, min(67, m1))
+    m2 = max(33, min(67, m2))
+    m3 = max(33, min(67, m3))
+    m4 = max(33, min(67, m4))
 
     return m1, m2, m3, m4, updated_errors, updated_integrals
 
@@ -344,13 +345,15 @@ running = True
 clock = pygame.time.Clock()
 
 # 初期化
-motor_speed = 35  # 基準速度
-target_roll, target_pitch, target_yaw = 0, 0, 0
+motor_speed = 33  # 基準速度
+target_roll, target_pitch = 0, 0
 M1, M2, M3, M4 = motor_speed, motor_speed, motor_speed, motor_speed
-previous_errors = {'roll': 0, 'pitch': 0, 'yaw': 0}
-integrals = {'roll': 0, 'pitch': 0, 'yaw': 0}
+previous_errors = {'roll': 0, 'pitch': 0}
+integrals = {'roll': 0, 'pitch': 0}
 dt = 0.01  # 時間間隔
 stop = 0
+kp_yaw = 1  # YawのP制御ゲイン
+
 while running:
     # イベント処理
     for event in pygame.event.get():
@@ -379,10 +382,10 @@ while running:
             gamepad_data[1] = 0
         if -0.15 < gamepad_data[2] < 0.15:
             gamepad_data[2] = 0
-        reset = gamepad_data[5]
+        stop = gamepad_data[5]
         # 目標角度を更新
-        target_roll = gamepad_data[2] * 30 * np.pi / 180
-        target_pitch = gamepad_data[1] * 30 * np.pi / 180
+        target_roll = gamepad_data[2] * 0.5 * np.pi / 180
+        target_pitch = gamepad_data[1] * 0.5 * np.pi / 180
 
         # モーター速度を調整
         if gamepad_data[3] == 1 and motor_speed > 33:
@@ -400,27 +403,44 @@ while running:
 
     # クォータニオンをオイラー角に変換
     roll, pitch, yaw = quaternion2euler(r, i, j, k)
-    target_yaw = yaw + gamepad_data[0] * 10 * np.pi / 180
 
     # 現在の角度と目標角度を辞書に格納
-    current_angles = {'roll': roll, 'pitch': pitch, 'yaw': yaw}
-    target_angles = {'roll': target_roll, 'pitch': target_pitch, 'yaw': target_yaw}
+    current_angles = {'roll': roll, 'pitch': pitch}
+    target_angles = {'roll': target_roll, 'pitch': target_pitch}
 
-    # PID制御を適用
-    M1, M2, M3, M4, previous_errors, integrals = pid_all_axes(
-        current_angles, target_angles, motor_speed, previous_errors, integrals, dt
-    )
-
-    #モーター出力を送信（例: ESP32に送信）
-    motor_outputs = {'M1': M1, 'M2': M2, 'M3': M3, 'M4': M4}
+    # PID制御を適用（RollとPitchのみ）
     
-    if stop:
-        motor_outputs = {'M1': 0, 'M2': 0, 'M3': 0, 'M4': 0}
-    print(motor_outputs)
+    '''M1, M2, M3, M4, previous_errors, integrals = pid_all_axes(
+        current_angles, target_angles, motor_speed, previous_errors, integrals, dt
+    )'''
+
+    # YawのP制御
+    if gamepad_data[0] != 0:  # Rスティックの入力がある場合のみ
+        yaw_error = gamepad_data[0] * 0.5 * np.pi / 180  # 入力を角速度に変換
+        yaw_output = kp_yaw * yaw_error
+
+        # モーター出力を調整
+        '''M1 += yaw_output
+        M3 -= yaw_output
+        M2 -= yaw_output
+        M4 += yaw_output'''
+
+    # モーター出力を制限（例: 33～67の範囲）
+    '''M1 = max(33, min(67, M1))
+    M2 = max(33, min(67, M2))
+    M3 = max(33, min(67, M3))
+    M4 = max(33, min(67, M4))'''
+    
+    M1, M2, M3, M4 = motor_speed+8, motor_speed+3, motor_speed+3, motor_speed
+    # モーター出力を送信（例: ESP32に送信）
+    motor_outputs = {'M1': M1, 'M2': M2, 'M3': M3, 'M4': M4}
+    #motor_outputs = {'M1': M1, 'M2': 0, 'M3': 0, 'M4': 0}
+    if stop == 1:
+        motor_outputs = {'M1': 32+5, 'M2': 32+3, 'M3': 32+2, 'M4': 32}
     sock_esp.sendto(json.dumps(motor_outputs).encode(), (esp_ip, port_esp))
 
     # 描画処理（省略せずにそのまま使用）
-    rotate_matrix = rotate_euler(target_roll, target_pitch, target_yaw)
+    rotate_matrix = rotate_euler(target_roll, target_pitch, yaw)
     screen.fill(gray)
 
     for pos in line_pos_list_up:
@@ -446,7 +466,6 @@ while running:
     axis_x.rotate_euler(rotate_matrix)
     axis_y.rotate_euler(rotate_matrix)
     axis_z.rotate_euler(rotate_matrix)
-
 
     # 描画処理
     vectors_up = sort_small_y(vectors_up)
@@ -476,30 +495,21 @@ while running:
     axis_y.draw_line(green, None)
     axis_z.draw_line(blue, None)
 
-# 軸の説明を描画
-    pygame.draw.line(screen, red, (1000,500), (1200,500), width=5)
-    pygame.draw.line(screen, green, (1000,500), (940,440), width=5)
-    pygame.draw.line(screen, blue, (1000,500), (1000,300), width=5)
-    
+    # 軸の説明を描画
+    pygame.draw.line(screen, red, (1000, 500), (1200, 500), width=5)
+    pygame.draw.line(screen, green, (1000, 500), (940, 440), width=5)
+    pygame.draw.line(screen, blue, (1000, 500), (1000, 300), width=5)
+
     draw_text("X", (1210, 490), red)
     draw_text("Y", (920, 420), green)
-    draw_text("Z", (1010, 280), blue)    
-    draw_text("Current_EulerAngles", (width/2, 550), white)
-    draw_text("Target_Angles", (width/2, 640), white)
-    
-    draw_text(str(np.floor(roll*180/np.pi)), (width/2, 600), white)
-    draw_text(str(np.floor(pitch*180/np.pi)), (width/2+100, 600), white)
-    draw_text(str(np.floor(yaw*180/np.pi)), (width/2+200, 600), white)
-    
-    target_roll = np.floor(target_roll*180/np.pi)
-    target_pitch = np.floor(target_pitch*180/np.pi)
-    target_yaw = np.floor(target_yaw*180/np.pi)
-    
-    draw_text(str(target_roll), (width/2, 680), white)
-    draw_text(str(target_pitch), (width/2+100, 680), white)
-    draw_text(str(target_yaw), (width/2+200, 680), white)
-    
-    # 画面更新
+    draw_text("Z", (1010, 280), blue)
+    draw_text("Current_EulerAngles", (width / 2, 550), white)
+    draw_text("Target_Angles", (width / 2, 640), white)
+
+    draw_text(str(np.floor(roll * 180 / np.pi)), (width / 2, 600), white)
+    draw_text(str(np.floor(pitch * 180 / np.pi)), (width / 2 + 100, 600), white)
+    draw_text(str(np.floor(yaw * 180 / np.pi)), (width / 2 + 200, 600), white)
+
     pygame.display.flip()
     clock.tick(240)
 

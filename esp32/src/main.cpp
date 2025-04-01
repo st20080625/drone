@@ -9,10 +9,10 @@
 #define SDA_PIN 21
 #define SCL_PIN 22
 
-int pwm1 = 14;
-int pwm2 = 15;
-int pwm3 = 16;
-int pwm4 = 17;
+int pwm1 = 13;
+int pwm2 = 12;
+int pwm3 = 14;
+int pwm4 = 27;
 
 motor motor1(pwm1, 0);
 motor motor2(pwm2, 1);
@@ -79,6 +79,9 @@ void send_sensor_task(void *pvParameters)
 void controll_motor_task(void *pvParameters)
 {
   char incoming_packet[128]; // バッファサイズを縮小
+  int no_data_counter = 0;   // データが受信されなかった回数をカウント
+  const int max_no_data_loops = 10; // 10ループ（約500ms）
+
   while (true)
   {
     int packet_size = udp.parsePacket();
@@ -124,22 +127,40 @@ void controll_motor_task(void *pvParameters)
         motor2.set_freq(M2);
         motor3.set_freq(M3);
         motor4.set_freq(M4);
-      }
 
+        // データが受信されたのでカウンタをリセット
+        no_data_counter = 0;
+      }
       else
       {
         Serial.println("JSON does not contain required keys (M1, M2, M3, M4).");
-        motor1.set_freq(0);
-        motor2.set_freq(0);
-        motor3.set_freq(0);
-        motor4.set_freq(0);
       }
     }
+    else
+    {
+      // データが受信されなかった場合、カウンタを増加
+      no_data_counter++;
 
+      // カウンタが10ループに達した場合、モーターを33に設定
+      if (no_data_counter >= max_no_data_loops)
+      {
+        motor1.set_freq(32);
+        motor2.set_freq(32);
+        motor3.set_freq(32);
+        motor4.set_freq(32);
+
+        Serial.println("No data received for 10 loops. Motors set to 33.");
+        no_data_counter = 0; // カウンタをリセット
+      }
+    }
 
     vTaskDelay(pdMS_TO_TICKS(50)); // 遅延を効率化
   }
 }
+
+IPAddress esp_ip(192,168,1,38);
+IPAddress gateway(192,168,1,1);
+IPAddress subnet(255,255,255,0);
 
 void setup()
 {
@@ -164,14 +185,32 @@ void setup()
       delay(10);
   }
   Serial.println("Rotation Vector Report Enabled!");
+  ledcSetup(0, 1000, 8);
+  ledcSetup(1, 1000, 8);
+  ledcSetup(2, 1000, 8);
+  ledcSetup(3, 1000, 8);
+
+  ledcAttachPin(pwm1, 0);
+  ledcAttachPin(pwm2, 1);
+  ledcAttachPin(pwm3, 2);
+  ledcAttachPin(pwm4, 3);
 
   //motor_freq max 67 , min 33
-  motor1.init(0);
-  motor2.init(0);
-  motor3.init(0);
-  motor4.init(1);
+  motor1.set_freq(255);
+  motor2.set_freq(255);
+  motor3.set_freq(255);
+  motor4.set_freq(255);
+
+  delay(3000);
+  motor1.set_freq(2);
+  motor2.set_freq(2);
+  motor3.set_freq(2);
+  motor4.set_freq(2);
+  
+  delay(1000);
 
   // WiFi接続（リトライ制限なし）
+  WiFi.config(esp_ip, gateway, subnet);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED)

@@ -10,8 +10,8 @@ def run_script(script_name, x, y):
 
 if __name__ == "__main__":
     # スクリプトをサブプロセスで実行し、ウィンドウ位置を設定
-    process1 = run_script("3d.quaternion.py", 100, 100)  # 左側のウィンドウ位置
-    process2 = run_script("3d.euler.py", 800, 100)      # 右側のウィンドウ位置
+    process1 = run_script("3d.euler.py", 1920, 100)      # 右側のウィンドウ位置
+    process2 = run_script("3d.quaternion.py", 1920, 800)  # 左側のウィンドウ位置
 
     try:
         # メインプロセスを待機状態にする
