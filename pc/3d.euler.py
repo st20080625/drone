@@ -3,7 +3,7 @@ import pygame
 import socket
 import json
 import copy
-import math
+import time
 
 ip = '192.168.1.23'
 port = 5001
@@ -11,7 +11,7 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((ip, port))
 
 esp_ip = '192.168.1.38'
-port_esp = 5002
+port_esp = 5000
 sock_esp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 class vec3D:
@@ -120,122 +120,6 @@ def rotate_euler(roll, pitch, yaw):
     ])
     return rotate_matrix
 
-def pid(current, target, axis_angle, rotation_direction, motors, previous_error, integral):
-    kp = 1
-    ki = 0.001
-    kd = 1
-    dt = 0.01
-    error = target - current
-    
-    p_output = kp * error
-    i_output = ki * integral
-    d_output = kd * (error - previous_error) / dt
-    
-    m1,m2,m3,m4 = motors[0], motors[1], motors[2], motors[3]
-    
-    pid_output = p_output + i_output + d_output
-    if axis_angle == "roll":
-        if error > 0:
-            m3 -= pid_output
-            m4 -= pid_output
-        else:
-            m1 -= pid_output
-            m2 -= pid_output
-    elif axis_angle == "pitch":
-        if error > 0:
-            m1 -= pid_output
-            m4 -= pid_output
-        else:
-            m2 -= pid_output
-            m3 -= pid_output
-    elif axis_angle == "yaw":
-        if rotation_direction == "right":
-            m1 -= pid_output
-            m3 -= pid_output
-        if rotation_direction == "left":
-            m2 -= pid_output
-            m4 -= pid_output
-            
-    previous_error = error
-    
-    return m1, m2, m3, m4
-
-def pid_all_axes(current_angles, target_angles, motor_speed, previous_errors, integrals, dt=0.01, kp=2, ki=0.01, kd=1):
-    """
-    PID制御をロール、ピッチ、ヨーの順に処理し、モーター出力を更新する。
-    
-    Parameters:
-        current_angles: dict - 現在の角度 {'roll': roll, 'pitch': pitch, 'yaw': yaw}
-        target_angles: dict - 目標の角度 {'roll': target_roll, 'pitch': target_pitch, 'yaw': target_yaw}
-        motor_speed: int - 基準となるモーター速度
-        previous_errors: dict - 前回のエラー {'roll': prev_roll, 'pitch': prev_pitch, 'yaw': prev_yaw}
-        integrals: dict - 積分値 {'roll': integral_roll, 'pitch': integral_pitch, 'yaw': integral_yaw}
-        dt: float - 時間間隔
-        kp, ki, kd: float - PIDゲイン
-    
-    Returns:
-        m1, m2, m3, m4: モーターの出力
-        updated_errors: dict - 更新されたエラー
-        updated_integrals: dict - 更新された積分値
-    """
-    # モーター出力を初期化
-    m1, m2, m3, m4 = motor_speed, motor_speed, motor_speed, motor_speed
-    updated_errors = {}
-    updated_integrals = {}
-
-    # 各軸ごとにPID制御を計算
-    for axis in ['roll', 'pitch', 'yaw']:
-        # エラーを計算
-        error = target_angles[axis] - current_angles[axis]
-
-        # P制御
-        p_output = kp * error
-
-        # I制御
-        integrals[axis] += error * dt
-        i_output = ki * integrals[axis]
-
-        # D制御
-        d_output = kd * (error - previous_errors[axis]) / dt
-
-        # PID出力
-        pid_output = p_output + i_output + d_output
-
-        # モーターの出力を調整
-        if axis == "roll":
-            if error > 0:
-                m3 -= pid_output
-                m4 -= pid_output
-            else:
-                m1 -= pid_output
-                m2 -= pid_output
-        elif axis == "pitch":
-            if error > 0:
-                m1 -= pid_output
-                m4 -= pid_output
-            else:
-                m2 -= pid_output
-                m3 -= pid_output
-        elif axis == "yaw":
-            if error > 0:
-                m1 += pid_output
-                m3 -= pid_output
-            else:
-                m2 += pid_output
-                m4 -= pid_output
-
-        # エラーと積分値を更新
-        updated_errors[axis] = error
-        updated_integrals[axis] = integrals[axis]
-
-    # モーター出力を制限（例: 33～67の範囲）
-    m1 = max(33, min(67, m1))
-    m2 = max(33, min(67, m2))
-    m3 = max(33, min(67, m3))
-    m4 = max(33, min(67, m4))
-
-    return m1, m2, m3, m4, updated_errors, updated_integrals
-
 def sort_small_y(vec_list):
     vec_list.sort(key=lambda x: x.y, reverse=True)
     return vec_list
@@ -341,19 +225,24 @@ for vec in vectors_down:
     else:
         vec.color = red
 
+# スムージング用の補間関数
+def smooth_transition(current, target, rate=0.1):
+    """
+    current: 現在の値
+    target: 目標値
+    rate: 補間率（0.0～1.0、値が小さいほど変化がゆっくり）
+    """
+    return current + (target - current) * rate
+
+# スピードの現在値を保持
+current_speed = 32  # 初期値を32に設定
+
 running = True
 clock = pygame.time.Clock()
 
-# 初期化
-motor_speed = 33  # 基準速度
-target_roll, target_pitch = 0, 0
-M1, M2, M3, M4 = motor_speed, motor_speed, motor_speed, motor_speed
-previous_errors = {'roll': 0, 'pitch': 0}
-integrals = {'roll': 0, 'pitch': 0}
-dt = 0.01  # 時間間隔
-stop = 0
-kp_yaw = 1  # YawのP制御ゲイン
-
+motor_speed = 0
+target_roll, target_pitch, target_yaw = 0, 0, 0
+yaw = 0
 while running:
     # イベント処理
     for event in pygame.event.get():
@@ -362,36 +251,52 @@ while running:
 
     if joystick:
         gamepad_data = [
-            # rx speed
+            # rx
             (joystick.get_axis(3)),
-            # lx pitch
+            # ry
+            (joystick.get_axis(4)),
+            # lx
             (joystick.get_axis(0)),
-            # ly yaw
+            # ly
             (joystick.get_axis(1)),
-            # l
-            joystick.get_button(4),
-            # r
-            joystick.get_button(5),
-            # reset
+            # stop
             joystick.get_button(1),
+            # offset
+            joystick.get_button(2),
         ]
-        # スティックのデッドゾーン処理
-        if -0.15 < gamepad_data[0] < 0.15:
-            gamepad_data[0] = 0
-        if -0.15 < gamepad_data[1] < 0.15:
-            gamepad_data[1] = 0
-        if -0.15 < gamepad_data[2] < 0.15:
-            gamepad_data[2] = 0
-        stop = gamepad_data[5]
-        # 目標角度を更新
-        target_roll = gamepad_data[2] * 0.5 * np.pi / 180
-        target_pitch = gamepad_data[1] * 0.5 * np.pi / 180
+        for n in range(4):
+            if -0.02 < gamepad_data[n] < 0.02:
+                gamepad_data[n] = 0  # デッドゾーン処理
+        stop = gamepad_data[4]
+        offset = gamepad_data[5]
 
-        # モーター速度を調整
-        if gamepad_data[3] == 1 and motor_speed > 33:
-            motor_speed -= 1
-        if gamepad_data[4] == 1 and motor_speed < 67:
-            motor_speed += 1
+    if gamepad_data[3] > 0:
+        gamepad_data[3] = 0
+    target_speed = int(-gamepad_data[3] * 35 + 32)
+
+    if gamepad_data[4] == 1:
+        target_speed = 32
+    if target_speed < 0:
+        target_speed = 0
+    if target_speed > 67:
+        target_speed = 67
+
+    # スピードをなめらかに補間
+    current_speed = smooth_transition(current_speed, target_speed, rate=0.1)
+
+    # スティック入力を送信
+    target_roll = gamepad_data[1] * 25
+    target_pitch = gamepad_data[0] * 25
+    target_yaw = yaw * 180/np.pi + -gamepad_data[2] * 10
+
+    gamepads = {
+        'speed': int(current_speed),  # スムージング後のスピードを送信
+        'target_roll': target_roll,
+        'target_pitch': target_pitch,
+        'target_yaw': target_yaw
+    }
+    data = json.dumps(gamepads).encode('utf-8')
+    sock_esp.sendto(data, (esp_ip, port_esp))
 
     # ドローンからクォータニオンを受信
     try:
@@ -404,43 +309,7 @@ while running:
     # クォータニオンをオイラー角に変換
     roll, pitch, yaw = quaternion2euler(r, i, j, k)
 
-    # 現在の角度と目標角度を辞書に格納
-    current_angles = {'roll': roll, 'pitch': pitch}
-    target_angles = {'roll': target_roll, 'pitch': target_pitch}
-
-    # PID制御を適用（RollとPitchのみ）
-    
-    '''M1, M2, M3, M4, previous_errors, integrals = pid_all_axes(
-        current_angles, target_angles, motor_speed, previous_errors, integrals, dt
-    )'''
-
-    # YawのP制御
-    if gamepad_data[0] != 0:  # Rスティックの入力がある場合のみ
-        yaw_error = gamepad_data[0] * 0.5 * np.pi / 180  # 入力を角速度に変換
-        yaw_output = kp_yaw * yaw_error
-
-        # モーター出力を調整
-        '''M1 += yaw_output
-        M3 -= yaw_output
-        M2 -= yaw_output
-        M4 += yaw_output'''
-
-    # モーター出力を制限（例: 33～67の範囲）
-    '''M1 = max(33, min(67, M1))
-    M2 = max(33, min(67, M2))
-    M3 = max(33, min(67, M3))
-    M4 = max(33, min(67, M4))'''
-    
-    M1, M2, M3, M4 = motor_speed+8, motor_speed+3, motor_speed+3, motor_speed
-    # モーター出力を送信（例: ESP32に送信）
-    motor_outputs = {'M1': M1, 'M2': M2, 'M3': M3, 'M4': M4}
-    #motor_outputs = {'M1': M1, 'M2': 0, 'M3': 0, 'M4': 0}
-    if stop == 1:
-        motor_outputs = {'M1': 32+5, 'M2': 32+3, 'M3': 32+2, 'M4': 32}
-    sock_esp.sendto(json.dumps(motor_outputs).encode(), (esp_ip, port_esp))
-
-    # 描画処理（省略せずにそのまま使用）
-    rotate_matrix = rotate_euler(target_roll, target_pitch, yaw)
+    rotate_matrix = rotate_euler(target_roll * np.pi / 180, target_pitch * np.pi / 180, yaw)
     screen.fill(gray)
 
     for pos in line_pos_list_up:
@@ -509,6 +378,12 @@ while running:
     draw_text(str(np.floor(roll * 180 / np.pi)), (width / 2, 600), white)
     draw_text(str(np.floor(pitch * 180 / np.pi)), (width / 2 + 100, 600), white)
     draw_text(str(np.floor(yaw * 180 / np.pi)), (width / 2 + 200, 600), white)
+    
+    draw_text(str(np.floor(target_roll)), (width / 2, 690), white)
+    draw_text(str(np.floor(target_pitch)), (width / 2 + 100, 690), white)
+    draw_text(str(np.floor(target_yaw)), (width / 2 + 200, 690), white)
+    
+    draw_text(str(motor_speed), (width / 2 + 300, 540), white)
 
     pygame.display.flip()
     clock.tick(240)
