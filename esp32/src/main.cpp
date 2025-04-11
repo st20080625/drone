@@ -8,15 +8,15 @@
 #define SDA_PIN 21
 #define SCL_PIN 22
 
-int pwm_pin1 = 25;
-int pwm_pin2 = 12;
-int pwm_pin3 = 27;
-int pwm_pin4 = 26;
+int pwm_pin0 = 25;
+int pwm_pin1 = 12;
+int pwm_pin2 = 27;
+int pwm_pin3 = 26;
 
-int motor_value1 = 32;
-int motor_value2 = 32;
-int motor_value3 = 32;
-int motor_value4 = 32;
+int motor_value0 = 0;
+int motor_value1 = 0;
+int motor_value2 = 0;
+int motor_value3 = 0;
 
 Adafruit_BNO08x bno08x;
 
@@ -49,7 +49,7 @@ float r, i, j, k;
 float roll, pitch, yaw;
 
 float target_roll, target_pitch, target_yaw;
-int speed;
+int speed = 0;
 
 float angles[3] = {};
 float target_angles[3] = {};
@@ -109,6 +109,13 @@ float pid(float target, float current, float &integral, float &previous_error, f
     return kp * error + ki * integral + kd * derivative;
 }
 
+void set_motor(int ch, float on_pulse_rate){
+    float duty = (1000 + 10*on_pulse_rate)/20000;
+    uint16_t value = duty*65535;
+    value = round(value);
+    ledcWrite(ch, value);
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -132,28 +139,28 @@ void setup()
       delay(10);
   }
   Serial.println("Rotation Vector Report Enabled!");
-  ledcSetup(0, 1000, 8);
-  ledcSetup(1, 1000, 8);
-  ledcSetup(2, 1000, 8);
-  ledcSetup(3, 1000, 8);
+  ledcSetup(0, 50, 16);
+  ledcSetup(1, 50, 16);
+  ledcSetup(2, 50, 16);
+  ledcSetup(3, 50, 16);
 
-  ledcAttachPin(pwm_pin1, 0);
-  ledcAttachPin(pwm_pin2, 1);
-  ledcAttachPin(pwm_pin3, 2);
-  ledcAttachPin(pwm_pin4, 3);
+  ledcAttachPin(pwm_pin0, 0);
+  ledcAttachPin(pwm_pin1, 1);
+  ledcAttachPin(pwm_pin2, 2);
+  ledcAttachPin(pwm_pin3, 3);
 
-  // motor_freq max 67 , min 33
-  ledcWrite(0, 255);
-  ledcWrite(1, 255);
-  ledcWrite(2, 255);
-  ledcWrite(3, 255);
+  //set_motor(ch, float on_pulse_rate)
+  set_motor(0, 100);
+  set_motor(1, 100);
+  set_motor(2, 100);
+  set_motor(3, 100);
 
-  delay(3000);
+  delay(1000);
 
-  ledcWrite(0, 1);
-  ledcWrite(1, 1);
-  ledcWrite(2, 1);
-  ledcWrite(3, 1);
+  set_motor(0, 0);
+  set_motor(1, 0);
+  set_motor(2, 0);
+  set_motor(3, 0);
 
   delay(1000);
 
@@ -253,7 +260,7 @@ void loop()
       no_data_counter = 0;
     }
 
-    Serial.print("speed:");
+    Serial.print("speed:"); //0~100% 勝手にset_motorで速度調整される
     Serial.print(speed);
     Serial.print(",  ");
     Serial.print("target_roll:");
@@ -268,43 +275,28 @@ void loop()
     pid_output_pitch = pid(target_pitch, pitch, error_integral_pitch, previous_error_pitch, kp_pitch, ki_pitch, kd_pitch);
     pid_output_yaw = pid(target_yaw, yaw, error_integral_yaw, previous_error_yaw, kp_yaw, ki_yaw, kd_yaw);
 
-    if(abs(target_roll - roll) > 0.05 && speed > 33 ){
-      error_integral_roll = 0;
-    }else{
-      pid_output_roll = 0;
-    }
+    pid_output_roll = constrain(pid_output_roll, -100, 100);
+    pid_output_pitch = constrain(pid_output_pitch, -100, 100);
+    pid_output_yaw = constrain(pid_output_yaw, -100, 100);
 
-    if(abs(target_pitch - pitch) > 0.05 && speed > 33){
-      error_integral_pitch = 0;
-    }else{
-      pid_output_pitch = 0;
-    }
+    motor_value0 = speed + pid_output_roll - pid_output_pitch;// + pid_output_yaw;
+    motor_value1 = speed + pid_output_roll + pid_output_pitch;// - pid_output_yaw;
+    motor_value2 = speed - pid_output_roll + pid_output_pitch;// - pid_output_yaw;
+    motor_value3 = speed - pid_output_roll - pid_output_pitch;// + pid_output_yaw;
 
-    if(abs(target_yaw - yaw) > 0.05 && speed > 33){
-      error_integral_yaw = 0;
-    }else{
-      pid_output_yaw = 0;
-    }
+    motor_value0 = constrain(motor_value0, 0, 100);
+    motor_value1 = constrain(motor_value1, 0, 100);
+    motor_value2 = constrain(motor_value2, 0, 100);
+    motor_value3 = constrain(motor_value3, 0, 100);
 
-    motor_value1 = speed + pid_output_roll - pid_output_pitch;// + pid_output_yaw;
-    motor_value2 = speed + pid_output_roll + pid_output_pitch;// - pid_output_yaw;
-    motor_value3 = speed - pid_output_roll + pid_output_pitch;// - pid_output_yaw;
-    motor_value4 = speed - pid_output_roll - pid_output_pitch;// + pid_output_yaw;
-
-    motor_value1 = constrain(motor_value1, 32, 68);
-    motor_value2 = constrain(motor_value2, 32, 68);
-    motor_value3 = constrain(motor_value3, 32, 68);
-    motor_value4 = constrain(motor_value4, 32, 68);
-
-    motor_value1 = speed;
-    motor_value2 = speed;
-    motor_value3 = speed;
-    motor_value4 = speed;
-
-    ledcWrite(0, motor_value1);
-    ledcWrite(1, motor_value2);
-    ledcWrite(2, motor_value3);
-    ledcWrite(3, motor_value4);
+    set_motor(0, motor_value0);
+    set_motor(1, motor_value1);
+    set_motor(2, motor_value2);
+    set_motor(3, motor_value3);
+      
+    Serial.print("motor_value0:");
+    Serial.print(motor_value0);
+    Serial.print(",  ");
     Serial.print("motor_value1:");
     Serial.print(motor_value1);
     Serial.print(",  ");
@@ -313,9 +305,6 @@ void loop()
     Serial.print(",  ");
     Serial.print("motor_value3:");
     Serial.print(motor_value3);
-    Serial.print(",  ");
-    Serial.print("motor_value4:");
-    Serial.print(motor_value4);
     Serial.println();
   }
   else
@@ -324,10 +313,10 @@ void loop()
     Serial.println("No data received");
     if (no_data_counter >= max_no_data_loops)
     {
-      ledcWrite(0, 31);
-      ledcWrite(1, 31);
-      ledcWrite(2, 31);
-      ledcWrite(3, 31);
+      ledcWrite(0, 0);
+      ledcWrite(1, 0);
+      ledcWrite(2, 0);
+      ledcWrite(3, 0);
       no_data_counter = 0;
     }
   }
