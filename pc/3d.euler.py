@@ -235,7 +235,7 @@ def smooth_transition(current, target, rate=0.1):
     return current + (target - current) * rate
 
 # スピードの現在値を保持
-current_speed = 32  # 初期値を32に設定
+current_speed = 0  # 初期値を32に設定
 
 running = True
 clock = pygame.time.Clock()
@@ -266,23 +266,19 @@ while running:
         ]
         for n in range(4):
             if -0.02 < gamepad_data[n] < 0.02:
-                gamepad_data[n] = 0  # デッドゾーン処理
+                gamepad_data[n] = 0
         stop = gamepad_data[4]
         offset = gamepad_data[5]
 
-    if gamepad_data[3] > 0:
-        gamepad_data[3] = 0
-    target_speed = int(-gamepad_data[3] * 35 + 32)
+    target_speed = -gamepad_data[3] * 100
 
     if gamepad_data[4] == 1:
-        target_speed = 32
+        target_speed = 0
     if target_speed < 0:
         target_speed = 0
-    if target_speed > 67:
-        target_speed = 67
 
     # スピードをなめらかに補間
-    current_speed = smooth_transition(current_speed, target_speed, rate=0.1)
+    #current_speed = smooth_transition(current_speed, target_speed, rate=0.1)
 
     # スティック入力を送信
     target_roll = gamepad_data[1] * 25
@@ -290,7 +286,7 @@ while running:
     target_yaw = yaw * 180/np.pi + -gamepad_data[2] * 10
 
     gamepads = {
-        'speed': int(current_speed),  # スムージング後のスピードを送信
+        'speed': target_speed,  # スムージング後のスピードを送信
         'target_roll': target_roll,
         'target_pitch': target_pitch,
         'target_yaw': target_yaw
@@ -383,7 +379,7 @@ while running:
     draw_text(str(np.floor(target_pitch)), (width / 2 + 100, 690), white)
     draw_text(str(np.floor(target_yaw)), (width / 2 + 200, 690), white)
     
-    draw_text(str(motor_speed), (width / 2 + 300, 540), white)
+    draw_text(str(motor_speed*100), (width / 2 + 300, 540), white)
 
     pygame.display.flip()
     clock.tick(240)
