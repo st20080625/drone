@@ -66,8 +66,8 @@ float pid_output_roll = 0;
 float pid_output_pitch = 0;
 float pid_output_yaw = 0;
 
-float kp_roll = 0.05, ki_roll = 0, kd_roll = 0;
-float kp_pitch = 0.05, ki_pitch = 0, kd_pitch = 0;
+float kp_roll = 0.1, ki_roll = 0.02, kd_roll = 0.03;
+float kp_pitch = 0.1, ki_pitch = 0.02, kd_pitch = 0.03;
 float kp_yaw = 0, ki_yaw = 0, kd_yaw = 0;
 float dt;
 
@@ -224,15 +224,15 @@ void loop()
     target_angles[1] = target_pitch;
     target_angles[2] = target_yaw;
 
-    Serial.print("roll");
-    Serial.print(roll);
-    Serial.print(",  ");
-    Serial.print("pitch");
-    Serial.print(pitch);
-    Serial.print(",  ");
-    Serial.print("yaw");
-    Serial.print(yaw);
-    Serial.println();
+    //Serial.print("roll");
+    //Serial.print(roll);
+    //Serial.print(",  ");
+    //Serial.print("pitch");
+    //Serial.print(pitch);
+    //Serial.print(",  ");
+    //Serial.print("yaw");
+    //Serial.print(yaw);
+    //Serial.println();
   }
   packet_size = udp.parsePacket();
   if (packet_size)
@@ -260,16 +260,16 @@ void loop()
       no_data_counter = 0;
     }
 
-    Serial.print("speed:"); //0~100% 勝手にset_motorで速度調整される
-    Serial.print(speed);
-    Serial.print(",  ");
-    Serial.print("target_roll:");
-    Serial.print(target_roll);
-    Serial.print(",  ");
-    Serial.print("target_pitch:");
-    Serial.print(target_pitch);
-    Serial.print(",  ");
-    Serial.print("target_yaw:");
+    //Serial.print("speed:"); //0~100% 勝手にset_motorで速度調整される
+    //Serial.print(speed);
+    //Serial.print(",  ");
+    //Serial.print("target_roll:");
+    //Serial.print(target_roll);
+    //Serial.print(",  ");
+    //Serial.print("target_pitch:");
+    //Serial.print(target_pitch);
+    //Serial.print(",  ");
+    //Serial.print("target_yaw:");
 
     pid_output_roll = pid(target_roll, roll, error_integral_roll, previous_error_roll, kp_roll, ki_roll, kd_roll);
     pid_output_pitch = pid(target_pitch, pitch, error_integral_pitch, previous_error_pitch, kp_pitch, ki_pitch, kd_pitch);
@@ -289,10 +289,22 @@ void loop()
     motor_value2 = constrain(motor_value2, 0, 100);
     motor_value3 = constrain(motor_value3, 0, 100);
 
-    set_motor(0, motor_value0);
-    set_motor(1, motor_value1);
-    set_motor(2, motor_value2);
-    set_motor(3, motor_value3);
+    if (speed == 0){
+      motor_value0 = 0;
+      motor_value1 = 0;
+      motor_value2 = 0;
+      motor_value3 = 0;
+
+      set_motor(0, motor_value0);
+      set_motor(1, motor_value1);
+      set_motor(2, motor_value2);
+      set_motor(3, motor_value3);
+    }else{
+      set_motor(0, motor_value0);
+      set_motor(1, motor_value1);
+      set_motor(2, motor_value2);
+      set_motor(3, motor_value3);
+    }
       
     Serial.print("motor_value0:");
     Serial.print(motor_value0);
@@ -313,10 +325,15 @@ void loop()
     Serial.println("No data received");
     if (no_data_counter >= max_no_data_loops)
     {
-      ledcWrite(0, 0);
-      ledcWrite(1, 0);
-      ledcWrite(2, 0);
-      ledcWrite(3, 0);
+      motor_value0 = 0;
+      motor_value1 = 0;
+      motor_value2 = 0;
+      motor_value3 = 0;
+
+      set_motor(0, motor_value0);
+      set_motor(1, motor_value1);
+      set_motor(2, motor_value2);
+      set_motor(3, motor_value3);
       no_data_counter = 0;
     }
   }
